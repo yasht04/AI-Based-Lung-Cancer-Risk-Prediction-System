@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Lungwise | Lung cancer risk check", page_icon="🫁", layout="wide")
 
 DEEP, MUTED, LINE = "#123B40", "#5B7176", "#DCE6E7"
-TEAL, ROSE = "#1F8A84", "#D1495B"
+TEAL, ROSE, AMBER = "#1F8A84", "#D1495B", "#B7791F"
 
 CSS = """
 <style>
@@ -78,7 +78,9 @@ html, body, .stApp, .stApp p, .stApp label, .stApp span, .stApp div, .stApp butt
 .sec { scroll-margin-top: 90px; padding-top: 2.5rem; }
 .sec h2 { margin-bottom: .6rem; }
 .sec p { color: #5B7176; line-height: 1.6; margin: 0 0 .5rem 0; }
-[data-testid="stForm"] { background: #fff; border: 1px solid #DCE6E7; border-radius: 18px; padding: 1.8rem; }
+[data-testid="stForm"] { background: #fff; border: 1px solid #DCE6E7; border-radius: 18px; padding: 1.8rem;
+  width: min(820px, calc(100% - 2.5rem)); max-width: 820px; margin-left: auto; margin-right: auto; box-sizing: border-box; }
+[data-testid="stExpander"] { width: min(820px, calc(100% - 2.5rem)); margin-left: auto; margin-right: auto; }
 [data-testid="stFormSubmitButton"] button { background: #1F8A84; color: #fff; border: 0; border-radius: 99px;
   padding: .75rem 1.6rem; font-weight: 600; width: 100%; }
 [data-testid="stFormSubmitButton"] button:hover { background: #123B40; color: #fff; }
@@ -100,22 +102,12 @@ st.markdown(CSS, unsafe_allow_html=True)
 model = joblib.load("disease_model.pkl")
 features = joblib.load("features.pkl")
 explainer = shap.TreeExplainer(model)
-nice = {c: c.replace("_", " ").capitalize() for c in features}
 
-questions = {
-    "SMOKING": "I smoke",
-    "YELLOW_FINGERS": "My fingers have yellow stains",
-    "ANXIETY": "I often feel anxious",
-    "PEER_PRESSURE": "I feel peer pressure to smoke or drink",
-    "CHRONIC DISEASE": "I have a long-term illness",
-    "FATIGUE": "I feel tired very often",
-    "ALLERGY": "I have allergies",
-    "WHEEZING": "I wheeze when breathing",
-    "ALCOHOL CONSUMING": "I drink alcohol regularly",
-    "COUGHING": "I have a persistent cough",
-    "SHORTNESS OF BREATH": "I get short of breath easily",
-    "SWALLOWING DIFFICULTY": "I find it hard to swallow",
-    "CHEST PAIN": "I have chest pain",
+NICE = {
+    "AGE": "Age", "GENDER": "Gender", "PACK_YEARS": "Smoking history",
+    "RADON": "Radon exposure", "ASBESTOS": "Asbestos exposure",
+    "SECONDHAND_SMOKE": "Secondhand smoke", "COPD": "COPD diagnosis",
+    "ALCOHOL": "Alcohol use", "FAMILY_HISTORY": "Family history",
 }
 
 
@@ -130,8 +122,8 @@ def risk_shap_values(row):
 
 
 def clean_axes(ax):
-    for s in ("top", "right", "left"):
-        ax.spines[s].set_visible(False)
+    for s_ in ("top", "right", "left"):
+        ax.spines[s_].set_visible(False)
     ax.spines["bottom"].set_color(LINE)
     ax.tick_params(colors=DEEP, length=0)
     ax.xaxis.label.set_color(MUTED)
@@ -149,7 +141,7 @@ st.markdown("""<div class="fullbleed"></div>
 <div class="hero" id="top">
 <div class="hero-text">
 <h1>Check your lung cancer risk in under a minute.</h1>
-<p>Answer thirteen simple yes/no questions. An AI model estimates your risk and shows exactly which answers influenced the result.</p>
+<p>Answer nine simple questions about your age, smoking and surroundings. An AI model estimates your risk and shows exactly which answers influenced the result.</p>
 <a class="btn" href="#check">Start the check</a><a class="btn ghost" href="#how">How it works</a>
 </div>
 <div class="rings"></div>
@@ -157,8 +149,8 @@ st.markdown("""<div class="fullbleed"></div>
 <div class="how" id="how">
 <h2>Three steps, no medical terms</h2>
 <div class="steps">
-<div class="step"><div class="n">1</div><h3>Answer simple questions</h3><p>Tell us your age, gender and which everyday symptoms and habits apply to you.</p></div>
-<div class="step"><div class="n">2</div><h3>Get a risk estimate</h3><p>A Random Forest model trained on survey data gives you a lower or higher risk result.</p></div>
+<div class="step"><div class="n">1</div><h3>Answer simple questions</h3><p>Tell us your age, how much you have smoked, and what you have been exposed to. No lab values needed.</p></div>
+<div class="step"><div class="n">2</div><h3>Get a risk estimate</h3><p>A Random Forest model trained on 50,000 patient profiles gives you a lower, moderate or higher risk result.</p></div>
 <div class="step"><div class="n">3</div><h3>See why</h3><p>SHAP explains which answers raised or lowered your result, so it is never a black box.</p></div>
 </div>
 </div>""", unsafe_allow_html=True)
@@ -166,41 +158,77 @@ st.markdown("""<div class="fullbleed"></div>
 # ---------- checker ----------
 st.markdown("""<div class="sec" id="check">
 <h2>Your check</h2>
-<p>Switch on everything that applies to you right now.</p>
+<p>Answer as best you can. If you are unsure about radon, choose Not sure.</p>
 </div>""", unsafe_allow_html=True)
 
 with st.form("check"):
-    c1, c2 = st.columns([1, 2])
+    c1, c2 = st.columns(2)
     gender = c1.radio("Gender", ["Male", "Female"], horizontal=True)
-    age = c2.slider("Age", 10, 100, 40)
+    age = c2.slider("Age", 18, 100, 45)
 
-    st.markdown("**Which of these apply to you?**")
-    answers = {"GENDER": 1 if gender == "Male" else 0, "AGE": age}
-    cols = st.columns(2)
-    for i, (col, text) in enumerate(questions.items()):
-        answers[col] = int(cols[i % 2].toggle(text))
+    st.markdown("**Smoking**")
+    s1, s2 = st.columns(2)
+    cigs = s1.number_input("Cigarettes per day (0 if you never smoked)", 0, 80, 0)
+    years = s2.number_input("Years you smoked", 0, 80, 0)
+
+    st.markdown("**Exposure and health**")
+    e1, e2 = st.columns(2)
+    radon = e1.selectbox("Radon at home or work (a gas from soil; many homes are tested)",
+                         ["Not sure", "Low", "Medium", "High"])
+    alcohol = e2.selectbox("Alcohol use", ["None", "Moderate", "Heavy"])
+    asbestos = e1.toggle("I have worked with or lived near asbestos")
+    secondhand = e2.toggle("I am regularly around other people's smoke")
+    copd = e1.toggle("A doctor has told me I have COPD")
+    family = e2.toggle("Family history of cancer or lung disease")
 
     submitted = st.form_submit_button("Check my risk")
 
 if submitted:
+    pack_years = min(cigs / 20 * years, 100)   # 1 pack = 20 cigarettes
+    answers = {
+        "AGE": age,
+        "GENDER": 1 if gender == "Male" else 0,
+        "PACK_YEARS": pack_years,
+        "RADON": {"Low": 0, "Not sure": 1, "Medium": 1, "High": 2}[radon],
+        "ASBESTOS": int(asbestos),
+        "SECONDHAND_SMOKE": int(secondhand),
+        "COPD": int(copd),
+        "ALCOHOL": {"None": 0, "Moderate": 1, "Heavy": 2}[alcohol],
+        "FAMILY_HISTORY": int(family),
+    }
     row = pd.DataFrame([answers])[features]
     prob = model.predict_proba(row)[0][1]
-    high = prob >= 0.5
-    color = ROSE if high else TEAL
-    label = "Higher risk" if high else "Lower risk"
-    advice = ("Please consider seeing a doctor about a chest X-ray or CT scan, and avoid smoking."
-              if high else
-              "Keep up healthy habits, avoid smoking, and get regular check-ups.")
+    if prob >= 0.75:
+        color, label = ROSE, "Higher than average"
+        advice = "Please consider talking to a doctor about screening, such as a low-dose CT scan, and avoid smoking."
+    elif prob >= 0.50:
+        color, label = AMBER, "Moderate risk"
+        advice = "Several of your answers match patients in the data. Consider a check-up and reduce exposure where you can."
+    else:
+        color, label = TEAL, "Lower than average"
+        advice = ("You have a smoking history, which raises lung cancer risk over time. Quitting helps at any age, and regular check-ups are wise."
+                  if pack_years > 0 else
+                  "Keep up healthy habits, avoid smoking, and get regular check-ups.")
+
+    # Expert rule: the practice dataset understates smoking, so 10+ pack-years is never shown as "lower".
+    floor_note = ""
+    if pack_years >= 10 and label == "Lower than average":
+        color, label = AMBER, "Moderate risk"
+        advice = ("Your smoking history of 10 or more pack-years raises lung cancer risk over time. "
+                  "Quitting helps at any age, and regular check-ups are wise.")
+        floor_note = ('<div style="margin-top:.9rem;color:#5B7176;font-size:.92rem">'
+                      'Raised to Moderate by a medical rule for smoking history, because the practice dataset understates smoking.</div>')
 
     st.markdown(f"""<div class="result">
 <div class="label" style="color:{color}">{label}</div>
-<div class="meta">Model estimate: {prob:.0%} chance</div>
+<div class="meta">Model score: {prob:.0%}, compared with patients in a synthetic practice dataset (not a real-world probability)</div>
 <div class="bar"><span style="width:{prob*100:.0f}%; background:{color}"></span></div>
 <div>{advice}</div>
+{floor_note}
 </div>""", unsafe_allow_html=True)
 
     st.markdown("""<div class="sec"><h2>Why the model said this</h2></div>""", unsafe_allow_html=True)
-    contrib = pd.Series(risk_shap_values(row), index=[nice[f] for f in features])
+    contrib = pd.Series(risk_shap_values(row), index=[NICE[f] for f in features])
     contrib = contrib[contrib.abs() > 1e-6].sort_values()
     up = contrib[contrib > 0].sort_values(ascending=False).head(3)
     down = contrib[contrib < 0].sort_values().head(3)
@@ -209,7 +237,7 @@ if submitted:
     if len(down):
         st.markdown(f"**Lowered it:** {', '.join(down.index)}")
 
-    fig, ax = plt.subplots(figsize=(6.4, max(2, 0.34 * len(contrib))))
+    fig, ax = plt.subplots(figsize=(6.4, max(2, 0.4 * len(contrib))))
     fig.patch.set_alpha(0)
     ax.set_facecolor("none")
     ax.barh(contrib.index, contrib.values,
@@ -221,7 +249,7 @@ if submitted:
     st.pyplot(fig, transparent=True)
 
 with st.expander("Which factors matter most overall?"):
-    imp = pd.Series(model.feature_importances_, index=[nice[f] for f in features]).sort_values()
+    imp = pd.Series(model.feature_importances_, index=[NICE[f] for f in features]).sort_values()
     fig2, ax2 = plt.subplots(figsize=(6.4, 5))
     fig2.patch.set_alpha(0)
     ax2.set_facecolor("none")

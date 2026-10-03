@@ -1,37 +1,49 @@
 # Explainable AI for Lung Cancer Risk Prediction
 
-A Streamlit web app that predicts lung cancer risk from simple yes/no
-symptom and lifestyle questions, and explains each prediction using SHAP.
+A Streamlit web app that estimates lung cancer risk from nine plain-language questions
+and explains each result with SHAP.
 
 ## Dataset
-Kaggle: "Lung Cancer" by Mysar Ahmad Bhat
-File needed: `survey lung cancer.csv` (about 309 rows, 16 columns)
-Search "survey lung cancer Kaggle" and download the CSV.
+Kaggle "Lung Cancer Risk" (2025), file `lung_cancer_dataset.csv` (50,000 rows, 11 columns).
+Columns used: age, gender, pack_years, radon_exposure, asbestos_exposure,
+secondhand_smoke_exposure, copd_diagnosis, alcohol_consumption, family_history.
+Target: lung_cancer (Yes/No). The data looks synthetic (uniform age and pack-years, 69% cancer rate).
 
 ## Files
-- `train.py`: trains a Random Forest, prints accuracy, saves the model
-- `app.py`: Streamlit app (prediction + SHAP explanation)
+- `train.py`: trains the Random Forest and saves the model
+- `app.py`: Streamlit app (landing page, form, result, SHAP explanation)
+- `report_figures.py`: makes the ROC, calibration and tier charts for the report
+- `report_notes.md`: Methods, Results and Limitations text for the report
 - `requirements.txt`: dependencies
+- `survey_version/`: the earlier version built on the small survey dataset (needs `survey lung cancer.csv`)
 
 ## How to run
-1. Put `survey lung cancer.csv`, `train.py`, `app.py` in one folder
-2. `pip install -r requirements.txt`
+1. Put `lung_cancer_dataset.csv`, `train.py`, `app.py` in one folder
+2. `pip install -r requirements.txt` (needs scikit-learn 1.4 or newer)
 3. `python train.py`  (creates `disease_model.pkl` and `features.pkl`)
-4. `streamlit run app.py`
+4. `python report_figures.py`  (optional, makes the charts)
+5. `streamlit run app.py`
+Optional: put `config.toml` inside a folder named `.streamlit` to lock the light theme.
 
-## Google Colab
-Run `!pip install -r requirements.txt`, upload the CSV, run train.py,
-then `!streamlit run app.py & npx localtunnel --port 8501`.
+## How the questions map to the model
+- Cigarettes per day and years smoked become pack-years: (cigarettes / 20) x years, capped at 100
+- Radon: Low / Medium / High (Not sure is treated as Medium)
+- Asbestos, secondhand smoke, COPD, family history: yes/no toggles
+- Alcohol: None / Moderate / Heavy
+
+## Result tiers
+Lower: score below 50%. Moderate: 50% to 75%. Higher: 75% and above.
+Cross-validated, the share of people with cancer was 22%, 65% and 94% in the three tiers.
 
 ## Test cases for Step 9 (take a screenshot of each)
-| # | Gender | Age | Answers set to YES | Expected |
-|---|--------|-----|--------------------|----------|
-| 1 | Male | 65 | Smoking, Coughing, Wheezing, Chest pain, Shortness of breath | High |
-| 2 | Female | 25 | none | Low |
-| 3 | Male | 58 | Smoking, Yellow fingers, Fatigue, Swallowing difficulty | High |
-| 4 | Female | 40 | Allergy, Anxiety | Low |
-| 5 | Male | 70 | Smoking, Alcohol, Coughing, Chronic disease | High |
-Actual results depend on the trained model, so record what the app shows.
+| # | Gender | Age | Smoking | Other answers | Score | Result |
+|---|--------|-----|---------|---------------|-------|--------|
+| 1 | Male | 68 | 20/day for 40 years | Radon High, Alcohol Heavy, asbestos, secondhand smoke, COPD, family history | 84% | Higher |
+| 2 | Male | 55 | 20/day for 20 years | Radon Not sure, Alcohol Moderate | 61% | Moderate |
+| 3 | Female | 45 | never smoked | Radon Not sure, secondhand smoke | 34% | Lower |
+| 4 | Female | 62 | 10/day for 30 years | Radon Low, COPD, family history | 56% | Moderate |
+| 5 | Female | 25 | never smoked | Radon Low, nothing else | 20% | Lower |
+| 6 | Male | 70 | 30/day for 45 years | Radon High, Alcohol Heavy, asbestos, secondhand smoke, COPD, family history | 94% | Higher |
 
 ## Disclaimer
-Educational screening tool, not a medical diagnosis.
+Educational screening demonstration, not a medical diagnosis.
