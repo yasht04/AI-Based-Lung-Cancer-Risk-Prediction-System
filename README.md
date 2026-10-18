@@ -11,7 +11,8 @@ Target: lung_cancer (Yes/No). The data looks synthetic (uniform age and pack-yea
 
 ## Files
 - `train.py`: trains the Random Forest and saves the model
-- `app.py`: Streamlit app (landing page, form, result, SHAP explanation)
+- `app.py`: Streamlit app (landing page, form, result, SHAP explanation, PDF report download)
+- `report.py`: builds the lab-style PDF report (used by `app.py`, needs `reportlab`)
 - `report_figures.py`: makes the ROC, calibration and tier charts for the report
 - `report_notes.md`: Methods, Results and Limitations text for the report
 - `requirements.txt`: dependencies
@@ -25,6 +26,13 @@ Target: lung_cancer (Yes/No). The data looks synthetic (uniform age and pack-yea
 5. `streamlit run app.py`
 Optional: put `config.toml` inside a folder named `.streamlit` to lock the light theme.
 
+## PDF report
+After a result is shown, the user can press "Download my report (PDF)". The report looks like a lab test report:
+patient name (optional), age and gender, report ID, date and time, a result table with reference ranges and a flag,
+every answer with its effect on the score (from SHAP), the explanation chart, advice and warning signs,
+model details and limitations, and a disclaimer. Nothing is stored: the PDF is built in memory for that session.
+Tip: enter the name in English letters, because the PDF uses a standard font.
+
 ## How the questions map to the model
 - Cigarettes per day and years smoked become pack-years: (cigarettes / 20) x years, capped at 100
 - Radon: Low / Medium / High (Not sure is treated as Medium)
@@ -32,18 +40,20 @@ Optional: put `config.toml` inside a folder named `.streamlit` to lock the light
 - Alcohol: None / Moderate / Heavy
 
 ## Result tiers
-Lower: score below 50%. Moderate: 50% to 75%. Higher: 75% and above.
+Lower than average: score below 50%. Moderate: 50% to 75%. Higher than average: 75% and above.
 Cross-validated, the share of people with cancer was 22%, 65% and 94% in the three tiers.
+Medical rule: anyone with 10 or more pack-years is shown at least Moderate, because the practice dataset understates smoking.
 
 ## Test cases for Step 9 (take a screenshot of each)
 | # | Gender | Age | Smoking | Other answers | Score | Result |
 |---|--------|-----|---------|---------------|-------|--------|
-| 1 | Male | 68 | 20/day for 40 years | Radon High, Alcohol Heavy, asbestos, secondhand smoke, COPD, family history | 84% | Higher |
+| 1 | Male | 68 | 20/day for 40 years | Radon High, Alcohol Heavy, asbestos, secondhand smoke, COPD, family history | 84% | Higher than average |
 | 2 | Male | 55 | 20/day for 20 years | Radon Not sure, Alcohol Moderate | 61% | Moderate |
-| 3 | Female | 45 | never smoked | Radon Not sure, secondhand smoke | 34% | Lower |
+| 3 | Female | 45 | never smoked | Radon Not sure, secondhand smoke | 34% | Lower than average |
 | 4 | Female | 62 | 10/day for 30 years | Radon Low, COPD, family history | 56% | Moderate |
-| 5 | Female | 25 | never smoked | Radon Low, nothing else | 20% | Lower |
-| 6 | Male | 70 | 30/day for 45 years | Radon High, Alcohol Heavy, asbestos, secondhand smoke, COPD, family history | 94% | Higher |
+| 5 | Female | 25 | never smoked | Radon Low, nothing else | 20% | Lower than average |
+| 6 | Male | 70 | 30/day for 45 years | Radon High, Alcohol Heavy, asbestos, secondhand smoke, COPD, family history | 94% | Higher than average |
+| 7 | Female | 24 | 57/day for 5 years | Radon Not sure, Alcohol Heavy | 32% | Moderate (raised by the pack-year rule) |
 
 ## Disclaimer
 Educational screening demonstration, not a medical diagnosis.

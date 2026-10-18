@@ -3,6 +3,10 @@ import pandas as pd
 import joblib
 import shap
 import matplotlib.pyplot as plt
+import uuid
+from datetime import datetime
+
+from report import build_report
 
 st.set_page_config(page_title="Lungwise | Lung cancer risk check", page_icon="🫁", layout="wide")
 
@@ -84,6 +88,9 @@ html, body, .stApp, .stApp p, .stApp label, .stApp span, .stApp div, .stApp butt
 [data-testid="stFormSubmitButton"] button { background: #1F8A84; color: #fff; border: 0; border-radius: 99px;
   padding: .75rem 1.6rem; font-weight: 600; width: 100%; }
 [data-testid="stFormSubmitButton"] button:hover { background: #123B40; color: #fff; }
+[data-testid="stDownloadButton"] button { background: #123B40; color: #fff; border: 0; border-radius: 99px;
+  padding: .75rem 1.6rem; font-weight: 600; }
+[data-testid="stDownloadButton"] button:hover { background: #1F8A84; color: #fff; }
 
 /* result */
 .result { background: #fff; border: 1px solid #DCE6E7; border-radius: 18px; padding: 1.8rem; }
@@ -162,6 +169,9 @@ st.markdown("""<div class="sec" id="check">
 </div>""", unsafe_allow_html=True)
 
 with st.form("check"):
+    name = st.text_input("Full name (optional, only used on the PDF report)", max_chars=60,
+                         placeholder="e.g. Asha Patil",
+                         help="Use English letters so the name prints correctly in the report.")
     c1, c2 = st.columns(2)
     gender = c1.radio("Gender", ["Male", "Female"], horizontal=True)
     age = c2.slider("Age", 18, 100, 45)
@@ -212,23 +222,52 @@ if submitted:
 
     # Expert rule: the practice dataset understates smoking, so 10+ pack-years is never shown as "lower".
     floor_note = ""
+    rule_applied = False
     if pack_years >= 10 and label == "Lower than average":
+        rule_applied = True
         color, label = AMBER, "Moderate risk"
         advice = ("Your smoking history of 10 or more pack-years raises lung cancer risk over time. "
                   "Quitting helps at any age, and regular check-ups are wise.")
         floor_note = ('<div style="margin-top:.9rem;color:#5B7176;font-size:.92rem">'
                       'Raised to Moderate by a medical rule for smoking history, because the practice dataset understates smoking.</div>')
 
+    contrib_all = dict(zip([NICE[f] for f in features], risk_shap_values(row)))
+
+    if pack_years > 0:
+        smoking_txt = f"{cigs} cigarettes/day for {years} years ({pack_years:.1f} pack-years)"
+    else:
+        smoking_txt = "No smoking history entered"
+    parameters = [
+        ("Age", f"{age} years"),
+        ("Gender", gender),
+        ("Smoking history", smoking_txt),
+        ("Radon exposure", "Not sure (treated as Medium)" if radon == "Not sure" else radon),
+        ("Asbestos exposure", "Yes" if asbestos else "No"),
+        ("Secondhand smoke", "Yes" if secondhand else "No"),
+        ("COPD diagnosis", "Yes" if copd else "No"),
+        ("Alcohol use", alcohol),
+        ("Family history", "Yes" if family else "No"),
+    ]
+    now = datetime.now()
+    report_id = f"LW-{now:%Y%m%d}-{uuid.uuid4().hex[:4].upper()}"
+    pdf_bytes = build_report(name, age, gender, parameters, contrib_all, prob, label, advice,
+                             rule_applied, report_id, f"{now:%d %b %Y, %H:%M}")
+    # Keep the result in session_state so it stays on screen after the download button is clicked.
+    st.session_state["result"] = dict(prob=prob, color=color, label=label, advice=advice, floor_note=floor_note,
+                                      contrib=contrib_all, pdf=pdf_bytes, report_id=report_id)
+
+res = st.session_state.get("result")
+if res:
     st.markdown(f"""<div class="result">
-<div class="label" style="color:{color}">{label}</div>
-<div class="meta">Model score: {prob:.0%}, compared with patients in a synthetic practice dataset (not a real-world probability)</div>
-<div class="bar"><span style="width:{prob*100:.0f}%; background:{color}"></span></div>
-<div>{advice}</div>
-{floor_note}
+<div class="label" style="color:{res['color']}">{res['label']}</div>
+<div class="meta">Model score: {res['prob']:.0%}, compared with patients in a synthetic practice dataset (not a real-world probability)</div>
+<div class="bar"><span style="width:{res['prob']*100:.0f}%; background:{res['color']}"></span></div>
+<div>{res['advice']}</div>
+{res['floor_note']}
 </div>""", unsafe_allow_html=True)
 
     st.markdown("""<div class="sec"><h2>Why the model said this</h2></div>""", unsafe_allow_html=True)
-    contrib = pd.Series(risk_shap_values(row), index=[NICE[f] for f in features])
+    contrib = pd.Series(res["contrib"])
     contrib = contrib[contrib.abs() > 1e-6].sort_values()
     up = contrib[contrib > 0].sort_values(ascending=False).head(3)
     down = contrib[contrib < 0].sort_values().head(3)
@@ -247,6 +286,12 @@ if submitted:
     clean_axes(ax)
     plt.tight_layout()
     st.pyplot(fig, transparent=True)
+
+    st.markdown("""<div class="sec"><h2>Your report</h2>
+<p>Want a copy? Download a lab-style PDF with your details, results and the explanation. Your name and answers are not stored.</p></div>""",
+                unsafe_allow_html=True)
+    st.download_button("Download my report (PDF)", data=res["pdf"],
+                       file_name=f"Lungwise_Report_{res['report_id']}.pdf", mime="application/pdf")
 
 with st.expander("Which factors matter most overall?"):
     imp = pd.Series(model.feature_importances_, index=[NICE[f] for f in features]).sort_values()
